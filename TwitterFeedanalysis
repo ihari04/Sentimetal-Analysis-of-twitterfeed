@@ -1,0 +1,133 @@
+#installing the required packages
+install.packages("https://cran.r-project.org/src/contrib/Archive/sentiment/sentiment_0.1.tar.gz", repo=NULL, type="source")
+install.packages("Rstem")
+install.packages("twitteR",dependencies = T)
+library(sentiment)
+library(twitteR)
+library(plyr)
+library(httr)
+library(twitteR)
+library(plyr)
+library(ggplot2)
+library(wordcloud)
+library(RColorBrewer)
+library(RCurl)
+library(ROAuth)
+
+#twitter auth
+# reqURL <- "https://api.twitter.com/oauth/request_token"
+# accessURL <- "http://api.twitter.com/oauth/access_token"
+# authURL <- "http://api.twitter.com/oauth/authorize"
+# consumerKey <- "XXXXXXXXXXXXXXXXXXXX"
+# consumerSecret <- "XXXXXXXXXXXXXXXXXXXX"
+# twitCred <- OAuthFactory$new(consumerKey=consumerKey,consumerSecret=consumerSecret,requestURL=reqURL,accessURL=accessURL,authURL=authURL)
+# download.file(url="http://curl.haxx.se/ca/cacert.pem", destfile="cacert.pem")
+# twitCred$handshake(cainfo="cacert.pem")
+# registerTwitterOAuth(twitCred)
+
+
+#new program
+#install.packages('base64enc')
+APIkey<-'"XXXXXXXXXXXXXXXXXXXX"'
+
+APIsecret<-'"XXXXXXXXXXXXXXXXXXXX"'
+
+Accesstoken<-'"XXXXXXXXXXXXXXXXXXXX"'
+
+Accesssecret<-'"XXXXXXXXXXXXXXXXXXXX"'
+setup_twitter_oauth(APIkey, APIsecret, Accesstoken, Accesssecret)
+
+some_text = searchTwitter('#airtel', n=10000, lang="en")
+some_txt = sapply(some_text, function(x) x$getText())
+some_txt = gsub("(RT|via)((?:\\b\\W*@\\w+)+)", "", some_txt)
+some_txt = gsub("@\\w+", "", some_txt)
+some_txt = gsub("[[:punct:]]", "", some_txt)
+some_txt = gsub("[[:digit:]]", "", some_txt)
+some_txt = gsub("http\\w+", "", some_txt)
+some_txt = gsub("[ \t]{2,}", "", some_txt)
+some_txt = gsub("^\\s+|\\s+$", "", some_txt)
+
+try.error = function(x)
+{
+  # create missing value
+  y = NA
+  # tryCatch error
+  try_error = tryCatch(tolower(x), error=function(e) e)
+  # if not an error
+  if (!inherits(try_error, "error"))
+    y = tolower(x)
+  # result
+  return(y)
+}
+
+# lower case using try.error with sapply 
+some_txt = sapply(some_txt, try.error)
+
+# remove NAs in some_txt
+some_txt = some_txt[!is.na(some_txt)]
+names(some_txt) = NULL
+
+# classify emotion
+class_emo = classify_emotion(some_txt, algorithm="bayes", prior=1.0)
+
+# get emotion best fit
+emotion = class_emo[,7]
+
+# substitute NA's by "unknown"
+emotion[is.na(emotion)] = "unknown"
+
+# classify polarity
+class_pol = classify_polarity(some_txt, algorithm="bayes")
+# get polarity best fit
+polarity = class_pol[,4]
+
+# data frame with results
+sent_df = data.frame(text=some_txt, emotion=emotion,
+                     polarity=polarity, stringsAsFactors=FALSE)
+
+
+#xy has the categories
+xy<-ggplot(sent_df_known, aes(x=emotion)) +
+  geom_bar(aes(y=..count.., fill=emotion)) +
+  scale_fill_brewer(palette="Dark2") +
+  labs(x="emotion categories", y="number of tweets") +
+  labs(title = "Sentiment Analysis of Tweets about Airtel \n(classification by emotion)",
+       plot.title = element_text(size=12))
+
+
+# plot distribution whether negative or positive.
+yx<-ggplot(sent_df_known, aes(x=polarity)) +
+  geom_bar(aes(y=..count.., fill=polarity)) +
+  scale_fill_brewer(palette="RdGy") +
+  labs(x="polarity categories", y="number of tweets") +
+  labs(title = "Sentiment Analysis of Tweets about Airtel \n(classification by polarity)",
+       plot.title = element_text(size=12))
+
+emos = levels(factor(sent_df$emotion))
+nemo = length(emos)
+emo.docs = rep("", nemo)
+for (i in 1:nemo)
+{
+  tmp = some_txt[emotion == emos[i]]
+  emo.docs[i] = paste(tmp, collapse=" ")
+}
+
+# remove stopwords
+emo.docs = removeWords(emo.docs, stopwords("english"))
+# create corpus
+corpus = Corpus(VectorSource(emo.docs))
+tdm = TermDocumentMatrix(corpus)
+tdm = as.matrix(tdm)
+colnames(tdm) = emos
+
+# comparison word cloud
+em<-comparison.cloud(tdm, colors = brewer.pal(nemo, "Dark2"),
+                     scale = c(3,.5), random.order = FALSE, title.size = 1.5)
+
+
+#draw plot
+xy
+yx
+
+
+
